@@ -1,0 +1,140 @@
+/*
+ * nRF54LM20A 开发板 设备树覆写文件 (Device Tree Overlay)
+ * 模组型号: ME54BS13-nRF54LM20A
+ * 目标板级: nrf54lm20dk/nrf54lm20a/cpuapp
+ *
+ * 原理图硬件引脚映射:
+ * -------------------------------------------------------------------------
+ * 外设           引脚编号    网络标号        电气特性 / 硬件说明
+ * -------------------------------------------------------------------------
+ * 串口 UART30    P0.06      UART0_TXD       TX 发送端，经 H1 跳线接到 CH343G RXD
+ *                P0.07      UART0_RXD       RX 接收端，经 H1 跳线接到 CH343G TXD
+ *                P0.08      UART0_RTS       RTS 流控 (可选)
+ *                P0.09      UART0_CTS       CTS 流控 (可选)
+ *
+ * LED0 (LED1)    P1.22      LED0            SI2302 N-MOS 低边驱动，高电平点亮
+ * LED1 (LED2)    P1.25      LED1            SI2302 N-MOS 低边驱动，高电平点亮
+ * LED2 (LED3)    P1.27      LED2            SI2302 N-MOS 低边驱动，高电平点亮
+ * LED3 (LED4)    P1.28      LED3            SI2302 N-MOS 低边驱动，高电平点亮
+ *
+ * BUTTON0 (SW1)  P1.26      BUTTON0         按键对地导通，内部上拉，低电平按下
+ * BUTTON1 (SW2)  P1.09      BUTTON1         按键对地导通，内部上拉，低电平按下
+ * BUTTON2 (SW3)  P1.08      BUTTON2         按键对地导通，内部上拉，低电平按下
+ * BUTTON3 (SW4)  P0.05      BUTTON3         按键对地导通，内部上拉，低电平按下
+ *
+ * WS2812B (LED5) P1.11      WS2812B DIN     经 R18 (220R) 到 DIN，VDD 为 +5V
+ *
+ * W25Q128JVSIQ   P2.05      QSPI_CS         片选 CS# (板载 R19 10k 上拉至 3V3)
+ * (16 MiB Flash) P2.01      QSPI_SCK        时钟 CLK
+ *                P2.02      QSPI_IO0        数据输入 DI (MOSI)
+ *                P2.04      QSPI_IO1        数据输出 DO (MISO)
+ *                P2.03      QSPI_IO2        写保护 WP# (单线 SPI 模式下必须拉高)
+ *                P2.00      QSPI_IO3        保持 HOLD# (单线 SPI 模式下必须拉高)
+ * -------------------------------------------------------------------------
+ */
+
+/* 1. 禁用 DK 默认的调试串口 UART20，启用连接 CH343G 的 UART30 */
+&uart20 {
+	status = "disabled";
+};
+
+&uart30 {
+	status = "okay";
+	current-speed = <115200>;
+};
+
+/ {
+	chosen {
+		zephyr,console = &uart30;
+		zephyr,shell-uart = &uart30;
+		zephyr,uart-mcumgr = &uart30;
+		zephyr,bt-mon-uart = &uart30;
+		zephyr,bt-c2h-uart = &uart30;
+	};
+
+	aliases {
+		led0 = &led0;
+		led1 = &led1;
+		led2 = &led2;
+		led3 = &led3;
+		sw0 = &button0;
+		sw1 = &button1;
+		sw2 = &button2;
+		sw3 = &button3;
+	};
+
+	/* 将 WS2812B DIN 引脚放置在标准 gpio-leds 容器中 */
+	leds {
+		compatible = "gpio-leds";
+		ws2812_din: ws2812_din {
+			gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+			label = "WS2812B DIN (P1.11)";
+		};
+	};
+};
+
+/* 2. 显式指定 4 颗用户 LED 引脚与有效极性 */
+&led0 {
+	gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
+	label = "User LED 0 (P1.22)";
+};
+
+&led1 {
+	gpios = <&gpio1 25 GPIO_ACTIVE_HIGH>;
+	label = "User LED 1 (P1.25)";
+};
+
+&led2 {
+	gpios = <&gpio1 27 GPIO_ACTIVE_HIGH>;
+	label = "User LED 2 (P1.27)";
+};
+
+&led3 {
+	gpios = <&gpio1 28 GPIO_ACTIVE_HIGH>;
+	label = "User LED 3 (P1.28)";
+};
+
+/* 3. 显式指定 4 个用户轻触按键引脚与有效极性 */
+&button0 {
+	gpios = <&gpio1 26 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+	label = "User Button 0 (P1.26)";
+};
+
+&button1 {
+	gpios = <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+	label = "User Button 1 (P1.09)";
+};
+
+&button2 {
+	gpios = <&gpio1 8 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+	label = "User Button 2 (P1.08)";
+};
+
+&button3 {
+	gpios = <&gpio0 5 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+	label = "User Button 3 (P0.05)";
+};
+
+/* 4. 将板载 Flash 替换为 W25Q128JVSIQ (16 MiB SPI-NOR Flash) */
+/delete-node/ &mx25r64;
+
+&spi00 {
+	status = "okay";
+	cs-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
+
+	w25q128jv: w25q128jv@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		/* SPI 频率设置为 8 MHz，稳定可靠 */
+		spi-max-frequency = <8000000>;
+		/* Winbond W25Q128JV JEDEC ID: 0xEF 0x40 0x18 */
+		jedec-id = [ef 40 18];
+		/*
+		 * 注意: jedec,spi-nor 的 size 属性单位为 bit (位) !
+		 * W25Q128JV 为 128 Mbit (16 MiB = 16,777,216 字节)
+		 * 因此 size 必须为 128 * 1024 * 1024 = 134217728 位 !
+		 * 若误写为 16777216，驱动会误认为容量仅为 16 Mbit (2 MB)，导致高地址擦写报 -EINVAL (-22)。
+		 */
+		size = <134217728>;
+	};
+};
